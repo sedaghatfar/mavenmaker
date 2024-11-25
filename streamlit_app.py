@@ -34,8 +34,7 @@ if st.button("Get Recipe Ideas"):
         messages=[
             {
                 "role": "user",
-                "content": f"You are an expert nutritionist - can you give me 3 recipe ideas using {selected_title} that are Kosher, high protein, and low in carbs and sugar. 
-Which means no dairy and meat in the same meal. Also please give an easy to digest shopping list at the bottom",
+                "content": f"You are an expert nutritionist - can you give me 3 recipe ideas using {selected_title} that are Kosher, high protein, and low in carbs and sugar. Which means no dairy and meat in the same meal. Also please give an easy to digest shopping list at the bottom",
             }
         ],
         model="llama3-8b-8192",
