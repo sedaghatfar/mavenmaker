@@ -34,7 +34,7 @@ if st.button("Get Recipe Ideas"):
         messages=[
             {
                 "role": "user",
-                "content": f"You are an expert nutritionist - can you give me 3 recipe ideas using {selected_title} that are Kosher, Dairy free, high protein, and low in carbs and sugar. Additionally please give an easy to read shopping list at the bottom",
+                "content": f"You are an expert nutritionist - can you give me 3 recipe ideas using {selected_title} that are Kosher, Dairy free, high protein, and low in carbs and sugar, No cheeses. In a table format also please give what the grocery list should be for a family of 4",
             }
         ],
         model="llama3-8b-8192",
