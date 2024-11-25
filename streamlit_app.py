@@ -15,14 +15,18 @@ client = Groq(
     api_key=st.secrets["GROQ_API_KEY"],
 )
 
+# -- Sidebar for family size
+st.sidebar.markdown("## How big is your family?")
+family_size = st.sidebar.slider("Family Size", 1.0, 10.0, 4.0, 0.5)
+
 # Streamlit app
 st.title("Recipe Idea Generator 🍴")
-st.write("Select an item from the table to get recipe ideas or click the 'Surprise Meal Plan' button for inspiration!")
+st.write(
+    "Select an item from the table to get recipe ideas or click the 'Surprise Meal Plan' button for inspiration!"
+)
 
 # Display the table for user selection
-selected_item = st.selectbox(
-    "Choose an item:", options=df["display"], index=0
-)
+selected_item = st.selectbox("Choose an item:", options=df["display"], index=0)
 
 # Button to trigger Groq API call for selected item
 if st.button("Get Recipe Ideas"):
@@ -34,10 +38,10 @@ if st.button("Get Recipe Ideas"):
         messages=[
             {
                 "role": "user",
-                "content": f"You are an expert nutritionist - can you give me 3 recipe ideas using {selected_title} that are Kosher, Dairy free, high protein, and low in carbs and sugar, No cheeses. In a table format also please give what the grocery list should be for a family of 4",
+                "content": f"Can you give me 3 recipe ideas using {selected_title} that are Kosher, high protein, and low in carbs and sugar for a family of {family_size}?",
             }
         ],
-        model="llama3-8b-8192",
+        model="llama-3.2-3b-preview",
     )
     
     # Display the response
@@ -54,7 +58,7 @@ if st.button("Surprise Meal Plan"):
         messages=[
             {
                 "role": "user",
-                "content": f"Can you give me a 3-day lunch and Dinner meal plan using {random_items_str} that is Kosher, high protein, and low in carbs and sugar In a table format?",
+                "content": f"Can you give me a 3-day meal plan using {random_items_str} that is Kosher, high protein, and low in carbs and sugar for a family of {family_size}?",
             }
         ],
         model="llama3-8b-8192",
@@ -63,10 +67,6 @@ if st.button("Surprise Meal Plan"):
     # Display the meal plan response
     st.markdown("### Surprise 3-Day Meal Plan 🍽️")
     st.markdown(chat_completion.choices[0].message.content)
-
-
-st.write("LLMs may hallucinate and do not fully understand the laws of Kashrut")
-
 
 # Add Groq branding at the bottom
 st.markdown(
