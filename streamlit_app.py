@@ -89,6 +89,9 @@ if st.button("Surprise Meal Plan"):
     st.markdown("### Surprise 3-Day Meal Plan 🍽️")
     st.markdown(chat_completion.choices[0].message.content)
 
+
+st.write("LLMs may hallucinate and do not fully understand the laws of Kashrut")
+
 # Add Groq branding at the bottom
 st.markdown(
     """
