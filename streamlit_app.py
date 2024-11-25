@@ -42,7 +42,7 @@ if st.button("Get Recipe Ideas"):
             "Act as an expert nutritionist. Please create a Kosher, dairy-free, "
             "high protein low carb lunch and dinner plan for a family of {family_size} "
             "using {selected_title} as the mains. Then create an easy-to-read grocery list. "
-            "Make batches that are easy to reheat.\n\n"
+            "Make batches that are easy to reheat. and use the following format as a style guide\n\n"
             "Day | Lunch | Dinner\n"
             "1 | Salsa Chicken with black beans and rice | Lean shoulder Burgers\n"
             "2 | Salsa Chicken with black beans and rice | London Broil Fajita-Style with Sauteed Onions and Bell Peppers\n"
