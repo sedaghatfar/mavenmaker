@@ -55,13 +55,13 @@ if st.button("Surprise Meal Plan"):
     
     # Call Groq API for the meal plan
     chat_completion = client.chat.completions.create(
-        messages = [
+        messages=[
             {
                 "role": "user",
                 "content": (
-                    "Act as an expert nutritionist. Please create a Kosher, dairy-free, "
-                    "high protein low carb lunch and dinner plan for a family of {family_size} "
-                    "using {selected_title} as the mains. Then create an easy-to-read grocery list. "
+                    f"Act as an expert nutritionist. Please create a Kosher, dairy-free, "
+                    f"high protein low carb lunch and dinner plan for a family of {family_size} "
+                    f"using {random_items_str} as the mains. Then create an easy-to-read grocery list. "
                     "Make batches that are easy to reheat. and use the following format as a style guide\n\n"
                     "Day | Lunch | Dinner\n"
                     "1 | Salsa Chicken with black beans and rice | Lean shoulder Burgers\n"
@@ -79,9 +79,9 @@ if st.button("Surprise Meal Plan"):
                     "- 2 Onions\n"
                     "- 2 Bell peppers\n"
                     "- 1 pack Burger Buns"
-        ).format(family_size=family_size, selected_title=selected_title)
-    }
-],
+                )
+            }
+        ],
         model="gemma2-9b-it",
     )
     
