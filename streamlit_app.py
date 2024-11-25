@@ -54,7 +54,7 @@ if st.button("Surprise Meal Plan"):
         messages=[
             {
                 "role": "user",
-                "content": f"Can you give me a 3-day meal plan using {random_items_str} that is Kosher, high protein, and low in carbs and sugar?",
+                "content": f"Can you give me a 3-day lunch and Dinner meal plan using {random_items_str} that is Kosher, high protein, and low in carbs and sugar In a table format?",
             }
         ],
         model="llama3-8b-8192",
