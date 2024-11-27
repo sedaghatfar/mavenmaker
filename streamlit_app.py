@@ -15,84 +15,135 @@ client = Groq(
     api_key=st.secrets["GROQ_API_KEY"],
 )
 
-# -- Sidebar for family size
-st.sidebar.markdown("## How big is your family?")
+# Enhanced Sidebar
+st.sidebar.image("path_to_your_logo.png", width=200)  # Add your logo
+st.sidebar.markdown("## 🍽️ Meal Planning Toolkit")
+
+# Fixed Dietary Restrictions
+st.sidebar.markdown("### Fixed Dietary Foundations")
+st.sidebar.write("✅ Kosher")
+st.sidebar.write("✅ Dairy-Free")
+st.sidebar.write("✅ High Protein")
+
+# Low-Carb Option
+low_carb = st.sidebar.checkbox("Low-Carb Option", value=False)
+
+# Cuisine Type Filter
+cuisine_types = st.sidebar.multiselect(
+    "Preferred Cuisines",
+    ["American", "Asian", "Israeli", "Persian", "Spanish"]
+)
+
+# Cooking Appliance Selection
+st.sidebar.markdown("### Cooking Appliances")
+cooking_appliances = st.sidebar.multiselect(
+    "Preferred Cooking Methods",
+    ["Instant Pot", "Air Fryer", "Oven", "Stovetop"]
+)
+
+# Family Size
 family_size = st.sidebar.slider("Family Size", 1.0, 10.0, 4.0, 0.5)
 
-# Streamlit app
-st.title("Recipe Idea Generator 🍴")
-st.write(
-    "Select an item from the table to get recipe ideas or click the 'Surprise Meal Plan' button for inspiration!"
+# Main App
+st.title("MeatMaven 🥩 Recipe Intelligence")
+st.write("Personalized meal planning powered by AI and your favorite proteins!")
+
+# Prompt Enhancement Dropdown
+prompt_style = st.selectbox(
+    "Recipe Idea Generation Style",
+    [
+        "Family-Friendly Classics", 
+        "Gourmet Culinary Adventure", 
+        "Quick & Healthy Weeknight Meals", 
+        "Budget-Conscious Cooking"
+    ]
 )
 
 # Display the table for user selection
 selected_item = st.selectbox("Choose an item:", options=df["display"], index=0)
 
-# Button to trigger Groq API call for selected item
-if st.button("Get Recipe Ideas"):
-    # Extract the title from the selected item
-    selected_title = selected_item.split(" - ")[0]
+# Enhanced Prompt Generation Function
+def generate_enhanced_prompt(selected_title, prompt_style, low_carb, cuisine_types, cooking_appliances, family_size):
+    # Base dietary constraints
+    diet_constraints = "Kosher, Dairy-Free, High Protein"
+    if low_carb:
+        diet_constraints += ", Low-Carb"
     
-    # Call Groq API
-    chat_completion = client.chat.completions.create(
-        messages=[
-            {
-                "role": "user",
-                "content": f"You are an expert nutritionist - can you give me 3 recipe ideas using {selected_title} that are Kosher, Dairy free, high protein, and low in carbs and sugar, No cheeses. In a table format also please give what the grocery list should be for a family of 4",
-            }
-        ],
-        model="llama3-8b-8192",
-    )
+    # Incorporate cuisine and cooking method if specified
+    additional_context = ""
+    if cuisine_types:
+        additional_context += f"Consider {', '.join(cuisine_types)} cuisine styles. "
+    if cooking_appliances:
+        additional_context += f"Use {', '.join(cooking_appliances)} for cooking. "
     
-    # Display the response
-    st.markdown(chat_completion.choices[0].message.content)
-
-# Surprise Meal Plan button
-if st.button("Surprise Meal Plan"):
-    # Randomly select 3 items from the CSV
-    random_items = random.sample(list(df["title"]), 3)
-    random_items_str = ", ".join(random_items)
+    prompt_templates = {
+        "Family-Friendly Classics": 
+            f"Create 3 kid-approved, {diet_constraints} recipe ideas using {selected_title}. "
+            f"Prepare for a family of {family_size}. {additional_context}",
+        
+        "Gourmet Culinary Adventure": 
+            f"Design 3 sophisticated, {diet_constraints} culinary creations featuring {selected_title} "
+            f"with restaurant-quality presentation. Family size: {family_size}. {additional_context}",
+        
+        "Quick & Healthy Weeknight Meals": 
+            f"Generate 3 nutritious, {diet_constraints} recipes using {selected_title} "
+            f"that can be prepared quickly for {family_size} people. {additional_context}",
+        
+        "Budget-Conscious Cooking": 
+            f"Develop 3 economical, {diet_constraints} meal ideas with {selected_title} "
+            f"that maximize flavor while minimizing cost. Serves {family_size}. {additional_context}"
+    }
     
-    # Call Groq API for the meal plan
-    chat_completion = client.chat.completions.create(
-        messages=[
-            {
-                "role": "user",
-                "content": (
-                    f"Act as an expert nutritionist. Please create a Kosher, dairy-free, "
-                    f"high protein low carb lunch and dinner plan for a family of {family_size} "
-                    f"using {random_items_str} as the mains. Then create an easy-to-read grocery list. "
-                    "Make batches that are easy to reheat. and use the following format as a style guide\n\n"
-                    "Day | Lunch | Dinner\n"
-                    "1 | Salsa Chicken with black beans and rice | Lean shoulder Burgers\n"
-                    "2 | Salsa Chicken with black beans and rice | London Broil Fajita-Style with Sauteed Onions and Bell Peppers\n"
-                    "3 | Pasta Chicken (cubes) and mixed vegetables | London Broil Fajita-Style with Sauteed Onions and Bell Peppers\n\n"
-                    "Shopping list:\n"
-                    "- Meat Maven Marinated London Broil 2 lbs\n"
-                    "- Chicken Cubes - Nuggets  - 1.5 lbs\n"
-                    "- Grain-Finished Ground Shoulder - Super Lean 2 lbs\n"
-                    "- Chicken Cutlets - Family Pack 2 lbs\n\n"
-                    "- Salsa 16oz\n"
-                    "- dry black beans\n"
-                    "- 2 cups basmati rice\n"
-                    "- frozen mixed vegetables\n"
-                    "- 2 Onions\n"
-                    "- 2 Bell peppers\n"
-                    "- 1 pack Burger Buns"
-                )
-            }
-        ],
-        model="gemma2-9b-it",
-    )
-    
-    # Display the meal plan response
-    st.markdown("### Surprise 3-Day Meal Plan 🍽️")
-    st.markdown(chat_completion.choices[0].message.content)
+    return prompt_templates.get(prompt_style, prompt_templates["Family-Friendly Classics"])
 
+# Buttons with Enhanced Functionality
+cols = st.columns(2)
+with cols[0]:
+    if st.button("🍳 Get Recipe Ideas"):
+        selected_title = selected_item.split(" - ")[0]
+        enhanced_prompt = generate_enhanced_prompt(
+            selected_title, prompt_style, low_carb, 
+            cuisine_types, cooking_appliances, family_size
+        )
+        
+        chat_completion = client.chat.completions.create(
+            messages=[{"role": "user", "content": enhanced_prompt}],
+            model="gemma2-9b-it",
+        )
+        
+        st.markdown(chat_completion.choices[0].message.content)
 
-st.write("LLMs may hallucinate and do not fully understand the laws of Kashrut")
+with cols[1]:
+    if st.button("🎲 Surprise Meal Plan"):
+        random_items = random.sample(list(df["title"]), 3)
+        random_items_str = ", ".join(random_items)
+        
+        surprise_prompt = (
+            f"Act as an expert nutritionist. Please create a Kosher, dairy-free, "
+            f"high protein meal plan for a family of {family_size}. "
+            f"Use {random_items_str} as the main proteins. "
+            f"{'Add low-carb considerations.' if low_carb else ''} "
+            f"{'Incorporate ' + ', '.join(cuisine_types) + ' cuisine styles.' if cuisine_types else ''} "
+            f"{'Suggest recipes using ' + ', '.join(cooking_appliances) + '.' if cooking_appliances else ''} "
+            "Create an easy-to-read lunch and dinner plan in the following format:\n\n"
+            "Day | Lunch | Dinner\n"
+            "1 | Salsa Chicken with black beans and rice | Lean shoulder Burgers\n"
+            "2 | Salsa Chicken with black beans and rice | London Broil Fajita-Style with Sauteed Onions and Bell Peppers\n"
+            "3 | Pasta Chicken (cubes) and mixed vegetables | London Broil Fajita-Style with Sauteed Onions and Bell Peppers\n\n"
+            "Include a shopping list with quantities for the family size."
+        )
+        
+        chat_completion = client.chat.completions.create(
+            messages=[{"role": "user", "content": surprise_prompt}],
+            model="gemma2-9b-it",
+        )
+        
+        st.markdown("### Surprise 3-Day Meal Plan 🍽️")
+        st.markdown(chat_completion.choices[0].message.content)
 
-# Add Groq branding at the bottom
+st.write("Note: LLMs may hallucinate and do not fully understand all dietary nuances.")
+
+# Groq Branding
 st.markdown(
     """
     <a href="https://groq.com" target="_blank" rel="noopener noreferrer">
@@ -105,3 +156,4 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
