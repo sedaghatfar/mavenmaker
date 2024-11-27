@@ -124,20 +124,19 @@ if st.button("🎲 Surprise Meal Plan"):
     random_items_str = ", ".join(random_items)
     
     surprise_prompt = (
-        f"Act as an expert nutritionist. Create a unique, diverse Kosher, dairy-free, "
+        f"Act as an expert nutritionist. Create a unique Kosher, dairy-free, "
         f"high protein meal plan for a family of {family_size}. "
-        f"Use {random_items_str} as the main proteins in creative, varied ways. "
+        f"ONLY use {random_items_str} as the main proteins for ALL meals. "
         f"{'Add low-carb considerations.' if low_carb else ''} "
         f"{'Incorporate ' + ', '.join(cuisine_types) + ' cuisine styles.' if cuisine_types else 'Use diverse international cuisine inspirations.'} "
         f"{'Suggest recipes using ' + ', '.join(cooking_appliances) + '.' if cooking_appliances else 'Vary cooking techniques.'} "
-        "Ensure NO repeated meal ideas across days. Create an easy-to-read lunch and dinner plan "
-        "with completely different recipes for each meal. Format:\n\n"
+        "Create an easy-to-read lunch and dinner plan. "
+        "Format:\n\n"
         "Day | Lunch | Dinner\n"
-        "1 | Mediterranean Spiced Chicken Salad | Korean-Style Beef Bulgogi Lettuce Wraps\n"
-        "2 | Middle Eastern Lamb Kebab Plate | Moroccan Spiced Fish Tagine\n"
-        "3 | Mexican Carnitas-Style Pulled Beef Tacos | Thai-Inspired Chicken Stir Fry\n\n"
-        "Provide a detailed shopping list with exact quantities for the family size, "
-        "highlighting unique ingredients for each recipe. Avoid generic or repeated ingredients."
+        "1 | Unique Lunch Recipe with Protein 1 | Different Dinner Recipe with Protein 1\n"
+        "2 | Unique Lunch Recipe with Protein 2 | Different Dinner Recipe with Protein 2\n"
+        "3 | Unique Lunch Recipe with Protein 3 | Different Dinner Recipe with Protein 3\n\n"
+        "Provide a detailed shopping list with exact quantities for the family size."
     )
     
     chat_completion = client.chat.completions.create(
