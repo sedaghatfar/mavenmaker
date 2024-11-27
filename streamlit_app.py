@@ -2,6 +2,7 @@ import streamlit as st
 from groq import Groq
 import pandas as pd
 import random
+import re
 
 # Load your CSV
 data_file = "meatmaven.csv"
@@ -96,50 +97,54 @@ def generate_enhanced_prompt(selected_title, prompt_style, low_carb, cuisine_typ
     
     return prompt_templates.get(prompt_style, prompt_templates["Family-Friendly Classics"])
 
-# Buttons with Enhanced Functionality
-cols = st.columns(2)
-with cols[0]:
-    if st.button("🍳 Get Recipe Ideas"):
-        selected_title = selected_item.split(" - ")[0]
-        enhanced_prompt = generate_enhanced_prompt(
-            selected_title, prompt_style, low_carb, 
-            cuisine_types, cooking_appliances, family_size
-        )
-        
-        chat_completion = client.chat.completions.create(
-            messages=[{"role": "user", "content": enhanced_prompt}],
-            model="gemma2-9b-it",
-        )
-        
-        st.markdown(chat_completion.choices[0].message.content)
+# Function to clean up LLM output
+def clean_markdown_output(text):
+    # Remove any stray asterisks or markdown formatting artifacts
+    text = re.sub(r'\*+', '', text)
+    return text
 
-with cols[1]:
-    if st.button("🎲 Surprise Meal Plan"):
-        random_items = random.sample(list(df["title"]), 3)
-        random_items_str = ", ".join(random_items)
-        
-        surprise_prompt = (
-            f"Act as an expert nutritionist. Please create a Kosher, dairy-free, "
-            f"high protein meal plan for a family of {family_size}. "
-            f"Use {random_items_str} as the main proteins. "
-            f"{'Add low-carb considerations.' if low_carb else ''} "
-            f"{'Incorporate ' + ', '.join(cuisine_types) + ' cuisine styles.' if cuisine_types else ''} "
-            f"{'Suggest recipes using ' + ', '.join(cooking_appliances) + '.' if cooking_appliances else ''} "
-            "Create an easy-to-read lunch and dinner plan in the following format:\n\n"
-            "Day | Lunch | Dinner\n"
-            "1 | Salsa Chicken with black beans and rice | Lean shoulder Burgers\n"
-            "2 | Salsa Chicken with black beans and rice | London Broil Fajita-Style with Sauteed Onions and Bell Peppers\n"
-            "3 | Pasta Chicken (cubes) and mixed vegetables | London Broil Fajita-Style with Sauteed Onions and Bell Peppers\n\n"
-            "Include a shopping list with quantities for the family size."
-        )
-        
-        chat_completion = client.chat.completions.create(
-            messages=[{"role": "user", "content": surprise_prompt}],
-            model="gemma2-9b-it",
-        )
-        
-        st.markdown("### Surprise 3-Day Meal Plan 🍽️")
-        st.markdown(chat_completion.choices[0].message.content)
+# Recipe Ideas Button
+if st.button("🍳 Get Recipe Ideas"):
+    selected_title = selected_item.split(" - ")[0]
+    enhanced_prompt = generate_enhanced_prompt(
+        selected_title, prompt_style, low_carb, 
+        cuisine_types, cooking_appliances, family_size
+    )
+    
+    chat_completion = client.chat.completions.create(
+        messages=[{"role": "user", "content": enhanced_prompt}],
+        model="gemma2-9b-it",
+    )
+    
+    st.markdown(clean_markdown_output(chat_completion.choices[0].message.content))
+
+# Surprise Meal Plan Button
+if st.button("🎲 Surprise Meal Plan"):
+    random_items = random.sample(list(df["title"]), 3)
+    random_items_str = ", ".join(random_items)
+    
+    surprise_prompt = (
+        f"Act as an expert nutritionist. Please create a Kosher, dairy-free, "
+        f"high protein meal plan for a family of {family_size}. "
+        f"Use {random_items_str} as the main proteins. "
+        f"{'Add low-carb considerations.' if low_carb else ''} "
+        f"{'Incorporate ' + ', '.join(cuisine_types) + ' cuisine styles.' if cuisine_types else ''} "
+        f"{'Suggest recipes using ' + ', '.join(cooking_appliances) + '.' if cooking_appliances else ''} "
+        "Create an easy-to-read lunch and dinner plan in the following format:\n\n"
+        "Day | Lunch | Dinner\n"
+        "1 | Salsa Chicken with black beans and rice | Lean shoulder Burgers\n"
+        "2 | Salsa Chicken with black beans and rice | London Broil Fajita-Style with Sauteed Onions and Bell Peppers\n"
+        "3 | Pasta Chicken (cubes) and mixed vegetables | London Broil Fajita-Style with Sauteed Onions and Bell Peppers\n\n"
+        "Include a shopping list with quantities for the family size."
+    )
+    
+    chat_completion = client.chat.completions.create(
+        messages=[{"role": "user", "content": surprise_prompt}],
+        model="gemma2-9b-it",
+    )
+    
+    st.markdown("### Surprise 3-Day Meal Plan 🍽️")
+    st.markdown(clean_markdown_output(chat_completion.choices[0].message.content))
 
 st.write("Note: LLMs may hallucinate and do not fully understand all dietary nuances.")
 
@@ -156,4 +161,3 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
