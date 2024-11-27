@@ -47,7 +47,7 @@ family_size = st.sidebar.slider("Family Size", 1.0, 10.0, 4.0, 0.5)
 
 # Main App
 st.title("MeatMaven 🥩 Recipe Intelligence")
-st.write("Personalized meal planning powered by AI and your favorite proteins!")
+st.write("Personalized meal planning powered by AI and your favorite Meat Maven Specials!")
 
 # Prompt Enhancement Dropdown
 prompt_style = st.selectbox(
