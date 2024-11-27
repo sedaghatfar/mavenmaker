@@ -148,7 +148,7 @@ if st.button("🎲 Surprise Meal Plan"):
     st.markdown(clean_markdown_output(chat_completion.choices[0].message.content))
 
 st.write("Note: LLMs may hallucinate and do not fully understand all dietary nuances.")
-st.write("MavenMaker is not affiliated with The MeatMaven this is for Demo Purposes. Please contact Matt@tevunah.com for suggestions and feedback")
+st.write("MavenMaker is not affiliated with The MeatMaven this is for Demo Purposes. \n Please contact Matt@tevunah.com for suggestions and feedback")
 
 # Groq Branding
 st.markdown(
