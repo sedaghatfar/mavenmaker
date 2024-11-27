@@ -124,18 +124,20 @@ if st.button("🎲 Surprise Meal Plan"):
     random_items_str = ", ".join(random_items)
     
     surprise_prompt = (
-        f"Act as an expert nutritionist. Please create a Kosher, dairy-free, "
+        f"Act as an expert nutritionist. Create a unique, diverse Kosher, dairy-free, "
         f"high protein meal plan for a family of {family_size}. "
-        f"Use {random_items_str} as the main proteins. "
+        f"Use {random_items_str} as the main proteins in creative, varied ways. "
         f"{'Add low-carb considerations.' if low_carb else ''} "
-        f"{'Incorporate ' + ', '.join(cuisine_types) + ' cuisine styles.' if cuisine_types else ''} "
-        f"{'Suggest recipes using ' + ', '.join(cooking_appliances) + '.' if cooking_appliances else ''} "
-        "Create an easy-to-read lunch and dinner plan in the following format:\n\n"
+        f"{'Incorporate ' + ', '.join(cuisine_types) + ' cuisine styles.' if cuisine_types else 'Use diverse international cuisine inspirations.'} "
+        f"{'Suggest recipes using ' + ', '.join(cooking_appliances) + '.' if cooking_appliances else 'Vary cooking techniques.'} "
+        "Ensure NO repeated meal ideas across days. Create an easy-to-read lunch and dinner plan "
+        "with completely different recipes for each meal. Format:\n\n"
         "Day | Lunch | Dinner\n"
-        "1 | Salsa Chicken with black beans and rice | Lean shoulder Burgers\n"
-        "2 | Salsa Chicken with black beans and rice | London Broil Fajita-Style with Sauteed Onions and Bell Peppers\n"
-        "3 | Pasta Chicken (cubes) and mixed vegetables | London Broil Fajita-Style with Sauteed Onions and Bell Peppers\n\n"
-        "Include a shopping list with quantities for the family size."
+        "1 | Mediterranean Spiced Chicken Salad | Korean-Style Beef Bulgogi Lettuce Wraps\n"
+        "2 | Middle Eastern Lamb Kebab Plate | Moroccan Spiced Fish Tagine\n"
+        "3 | Mexican Carnitas-Style Pulled Beef Tacos | Thai-Inspired Chicken Stir Fry\n\n"
+        "Provide a detailed shopping list with exact quantities for the family size, "
+        "highlighting unique ingredients for each recipe. Avoid generic or repeated ingredients."
     )
     
     chat_completion = client.chat.completions.create(
