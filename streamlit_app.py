@@ -16,7 +16,7 @@ client = Groq(
 )
 
 # Enhanced Sidebar
-st.sidebar.image("path_to_your_logo.png", width=200)  # Add your logo
+st.sidebar.image("/mount/src/mavenmaker/mavenlogo.svg", width=200)  # Add your logo
 st.sidebar.markdown("## 🍽️ Meal Planning Toolkit")
 
 # Fixed Dietary Restrictions
