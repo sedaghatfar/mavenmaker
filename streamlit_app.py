@@ -13,7 +13,7 @@ df["display"] = df["title"] + " - " + df["price"].astype(str)
 
 # Initialize Groq client
 client = Groq(
-    api_key=st.secrets["GROQ_API_KEY"],
+    api_key='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', #for testing delete
 )
 
 # Enhanced Sidebar
