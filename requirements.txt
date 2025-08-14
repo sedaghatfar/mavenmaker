@@ -2,3 +2,4 @@ groq>=0.4.0  # or the latest version
 streamlit
 pandas
 httpx
+plotly
