@@ -4,6 +4,7 @@
 # - CSV from repo (meatmaven_specials.csv) or user upload
 # - Groq via st.secrets["GROQ_API_KEY"] (falls back to env if needed)
 # - Kosher/high-protein guardrails, analytics, exports
+# - Meal planner now shows appetizing MEAL TITLES, while shopping aggregates base items
 # ──────────────────────────────────────────────────────────────────────────────
 
 import os
@@ -259,6 +260,9 @@ with fil1:
 with fil2:
     price_min = float(df["price"].min()) if df["price"].notna().any() else 0.0
     price_max = float(df["price"].max()) if df["price"].notna().any() else 100.0
+    if price_min == price_max:
+        price_min = max(0.0, price_min - 0.01)
+        price_max = price_max + 0.01
     price_range = st.slider("Price range ($)", price_min, price_max, (price_min, price_max))
 with fil3:
     protein_min = st.number_input("Min protein (g)", value=float(df["protein"].min()), step=1.0)
@@ -277,7 +281,7 @@ st.dataframe(
     use_container_width=True, hide_index=True
 )
 
-# ── Helper: Prompt Builder ────────────────────────────────────────────────────
+# ── Helper: Prompt Builder & Meal Title Generator ─────────────────────────────
 def build_recipe_prompt(selected_title: str, prompt_style: str) -> str:
     diet_constraints = "Kosher, High Protein"
     if low_carb:
@@ -332,6 +336,73 @@ def build_recipe_prompt(selected_title: str, prompt_style: str) -> str:
         "Format each recipe with: Title, Ingredients, Instructions, Tips, and Nutrition."
     )
     return full
+
+def generate_meal_title(base_item: str, plan_style: str, cuisines: list[str], meal_focus: str) -> str:
+    """
+    Return a short, appetizing meal title built around the base ingredient.
+    Uses Groq if available/toggled; otherwise rule-based fallback.
+    Keeps kosher by avoiding obvious dairy-meat mixes and non-kosher items.
+    """
+    # Prefer AI if available
+    if 'client' in globals() and client and st.session_state.get("use_groq"):
+        try:
+            cuisines_txt = ", ".join(cuisines) if cuisines else "any cuisine"
+            meal_focus_txt = meal_focus if meal_focus != "Any" else "any meal"
+            prompt = (
+                "Create ONE short, appetizing kosher meal title (6–10 words) using the base item.\n"
+                f"- Base item: {base_item}\n"
+                f"- Style: {plan_style}\n"
+                f"- Cuisine hints: {cuisines_txt}\n"
+                f"- Meal focus: {meal_focus_txt}\n"
+                "- Kosher constraints: no pork/shellfish, no mixing meat+dairy; prefer pareve sides.\n"
+                "- Output only the title. No extra text."
+            )
+            resp = client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model="llama-3.1-8b-instant",
+                temperature=0.6,
+                max_tokens=32,
+            )
+            title = (resp.choices[0].message.content or "").strip()
+            title = re.sub(r"^[\"'“”]+|[\"'“”]+$", "", title)
+            if 4 <= len(title.split()) <= 14:
+                return title
+        except Exception:
+            pass  # fall through to rule-based
+
+    # Rule-based fallback: technique + accent + side
+    techniques = [
+        "Roasted", "Grilled", "Pan-Seared", "Herb-Crusted", "Garlic-Lemon", "Spice-Rubbed",
+        "Sheet-Pan", "Za’atar", "Sumac-Dusted", "Honey-Chili", "Paprika-Rubbed", "Citrus-Herb",
+    ]
+    sides = [
+        "with Herbed Couscous", "over Roasted Veggies", "with Tahini Drizzle", "with Olive & Tomato Salad",
+        "with Garlic Green Beans", "over Turmeric Rice", "with Lemon Dill Slaw", "with Sumac Onions",
+        "with Chimichurri", "with Charred Broccolini", "with Cauliflower Pilaf",
+    ]
+    cuisine_tags = {
+        "Israeli": ["Za’atar", "Sumac-Dusted", "Tahini"],
+        "Mediterranean": ["Herb-Crusted", "Citrus-Herb", "Olive"],
+        "Persian": ["Saffron", "Herb", "Turmeric"],
+        "Mexican": ["Chili-Lime", "Smoky", "Chipotle"],
+        "Italian": ["Garlic-Herb", "Tomato-Basil", "Balsamic"],
+        "French": ["Herbes de Provence", "Dijon", "Butter-Herb"],  # tag only; not literal butter
+        "Lebanese": ["Sumac", "Seven-Spice", "Tahini"],
+        "Indian": ["Tandoori-Style", "Masala", "Cardamom"],
+        "Thai": ["Lemongrass", "Chili-Lime", "Herb"],
+        "American": ["BBQ", "Smoke-Rubbed", "Butcher-Style"],
+        "Spanish": ["Smoked Paprika", "Romesco-Style", "Garlic-Herb"],
+    }
+    tech_pool = techniques.copy()
+    if cuisines:
+        for c in cuisines:
+            for tag in cuisine_tags.get(c, []):
+                tech_pool.append(tag)
+    random.seed(RANDOM_SEED)
+    t = random.choice(tech_pool)
+    s = random.choice(sides)
+    base_item_clean = re.sub(r"(?i)\b(parmesan|butter|cream|cheese)\b", "Herb", base_item)
+    return f"{t} {base_item_clean} {s}"
 
 def demo_recipes(selected_title: str, n: int = 3) -> str:
     out = []
@@ -419,7 +490,7 @@ with tab1:
         selected_title = selected_item.split(" - $")[0]
         with st.spinner("🧠 AI Chef is crafting your personalized recipes..."):
             recipe_md = None
-            if has_api and st.session_state.use_groq:
+            if client and st.session_state.use_groq:
                 try:
                     prompt = build_recipe_prompt(selected_title, prompt_style)
                     chat_completion = client.chat.completions.create(
@@ -472,7 +543,7 @@ with tab1:
             if st.button("🔄 New Variations"):
                 st.experimental_rerun()
 
-# ── Tab 2: Meal Plans ────────────────────────────────────────────────────────
+# ── Tab 2: Meal Plans (now shows meal titles) ────────────────────────────────
 with tab2:
     st.header("🗓️ Intelligent Meal Planning")
 
@@ -515,22 +586,34 @@ with tab2:
             else:
                 random.seed(RANDOM_SEED)
                 plan_rows = []
+                # Keep separate mapping for shopping list aggregation
+                planned_items_for_shopping = []
+
                 for day in range(1, num_days_plan + 1):
                     row = {"Day": f"Day {day}"}
                     for mt in meal_types_for_plan:
+                        # choose base item
                         if allow_repeats:
-                            row[mt] = random.choice(pool)
+                            base_item = random.choice(pool)
                         else:
                             pick = random.choice(pool)
-                            row[mt] = pick
+                            base_item = pick
                             pool.remove(pick)
+
+                        # build meal title (AI or rule-based)
+                        meal_title = generate_meal_title(base_item, plan_style, cuisine_types, mt)
+
+                        # show pretty name in the grid; remember base item for shopping
+                        row[mt] = meal_title
+                        planned_items_for_shopping.append(base_item)
                     plan_rows.append(row)
 
                 plan_df = pd.DataFrame(plan_rows)
                 st.dataframe(plan_df, use_container_width=True, hide_index=True)
 
-                # Session-only
+                # Store plan (display) and shopping items (session only)
                 st.session_state.current_plan = plan_df.to_dict(orient="list")
+                st.session_state.plan_items_for_shopping = planned_items_for_shopping
                 st.success("🎉 Meal plan generated! Check the Shopping tab for your grocery list.")
 
                 # Export plan
@@ -561,10 +644,11 @@ with tab3:
             st.metric("Best Value", df.loc[df["value_score"].idxmax(), "title"], f"{df['value_score'].max():.2f} g/$")
 
     with tab3b:
-        topn = st.slider("Show top N by price", 5, min(20, len(df)), min(10, len(df)))
+        max_n = max(1, min(20, len(df)))
+        default_n = min(10, max_n)
         fig2 = px.bar(
-            df.nlargest(topn, "price"),
-            x="title", y="price", title=f"Top {topn} Prices",
+            df.nlargest(default_n, "price"),
+            x="title", y="price", title=f"Top {default_n} Prices",
             color="price", color_continuous_scale="reds",
         )
         fig2.update_xaxes(tickangle=45)
@@ -620,7 +704,7 @@ with tab4:
     else:
         st.info("📝 No history yet — go create something tasty!")
 
-# ── Tab 5: Shopping ──────────────────────────────────────────────────────────
+# ── Tab 5: Shopping (uses base items even if plan shows fancy titles) ────────
 with tab5:
     st.header("🛒 Smart Shopping Assistant")
 
@@ -629,12 +713,16 @@ with tab5:
         plan_df = pd.DataFrame(st.session_state.current_plan)
         st.dataframe(plan_df, use_container_width=True, hide_index=True)
 
-        # Flatten meal items
-        plan_items = []
-        for col in plan_df.columns:
-            if col == "Day":  # skip day label
-                continue
-            plan_items.extend(plan_df[col].dropna().tolist())
+        # Flatten meal items (use mapped base items if available)
+        if "plan_items_for_shopping" in st.session_state and st.session_state.plan_items_for_shopping:
+            plan_items = list(st.session_state.plan_items_for_shopping)
+        else:
+            # Fallback: parse titles from the grid (older behavior)
+            plan_items = []
+            for col in plan_df.columns:
+                if col == "Day":
+                    continue
+                plan_items.extend(plan_df[col].dropna().tolist())
 
         # Aggregate unique items w/ info
         shopping = []
