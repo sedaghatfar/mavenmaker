@@ -4,7 +4,8 @@
 # - CSV from repo (meatmaven_specials.csv) or user upload
 # - Groq via st.secrets["GROQ_API_KEY"] (falls back to env if needed)
 # - Kosher/high-protein guardrails, analytics, exports
-# - Meal planner now shows appetizing MEAL TITLES, while shopping aggregates base items
+# - Meal planner shows appetizing MEAL TITLES; shopping aggregates base items
+# - Default meal plan length = 3 days
 # ──────────────────────────────────────────────────────────────────────────────
 
 import os
@@ -72,7 +73,7 @@ st.markdown(
 
 # ── Utils ─────────────────────────────────────────────────────────────────────
 def koshernize_name(name: str) -> str:
-    # Soft guardrails
+    # Soft guardrails: avoid pork terms in labels
     return "Turkey Tenderloin" if "pork" in str(name).lower() else str(name)
 
 def clean_markdown_output(text: str) -> str:
@@ -148,7 +149,7 @@ st.markdown(
 )
 
 # ── Data Ingestion (GitHub file or upload) ────────────────────────────────────
-data_col1, data_col2 = st.columns([0.65, 0.35], vertical_alignment="center")
+data_col1, data_col2 = st.columns([0.65, 0.35])
 with data_col1:
     up_file = st.file_uploader(
         "📥 Upload a specials CSV (optional)",
@@ -171,12 +172,12 @@ else:
         # Provide a friendly sample if the repo file is missing
         sample = {
             "title": [
-                "Premium Ribeye Steak", "Fresh Salmon Fillet", "Organic Chicken Breast",
-                "Grass-Fed Ground Beef", "Lamb Chops", "Turkey Breast"
+                "London Broil", "Lamb Shoulder", "Pepper Steak",
+                "Organic Chicken Breast", "Chicken Drumsticks", "Beef Brisket"
             ],
-            "price": [24.99, 18.99, 12.99, 15.99, 28.99, 16.99],
-            "protein": [26.8, 25.4, 31.0, 26.1, 25.6, 29.3],
-            "calories": [291, 206, 165, 250, 294, 189],
+            "price": [17.99, 24.99, 15.49, 12.99, 10.99, 21.99],
+            "protein": [28.0, 26.0, 27.0, 31.0, 29.0, 27.5],
+            "calories": [250, 294, 265, 165, 210, 300],
         }
         df = ensure_columns(pd.DataFrame(sample))
         st.info("📁 Using sample data. Commit `meatmaven_specials.csv` to your repo to use live data.")
@@ -281,7 +282,7 @@ st.dataframe(
     use_container_width=True, hide_index=True
 )
 
-# ── Helper: Prompt Builder & Meal Title Generator ─────────────────────────────
+# ── Helpers: Prompt Builder & Meal Title Generator ────────────────────────────
 def build_recipe_prompt(selected_title: str, prompt_style: str) -> str:
     diet_constraints = "Kosher, High Protein"
     if low_carb:
@@ -337,12 +338,39 @@ def build_recipe_prompt(selected_title: str, prompt_style: str) -> str:
     )
     return full
 
+def classify_item(base_item: str) -> tuple[str, str]:
+    """Return (protein, cut_or_item) for nicer titles."""
+    s = base_item.lower()
+    if "lamb" in s:
+        return "Lamb", base_item
+    if "london broil" in s:
+        return "Beef", "London Broil"
+    if "brisket" in s:
+        return "Beef", "Brisket"
+    if "flanken" in s or "short rib" in s:
+        return "Beef", "Short Ribs"
+    if "pepper steak" in s:
+        return "Beef", "Pepper Steak"
+    if "beef" in s:
+        return "Beef", base_item
+    if "drumstick" in s or "thigh" in s or "breast" in s or "chicken" in s or "legs" in s:
+        return "Chicken", base_item
+    if "turkey" in s:
+        return "Turkey", base_item
+    if "salmon" in s:
+        return "Salmon", base_item
+    if "fish" in s:
+        return "Fish", base_item
+    return base_item.split()[0].title(), base_item
+
 def generate_meal_title(base_item: str, plan_style: str, cuisines: list[str], meal_focus: str) -> str:
     """
     Return a short, appetizing meal title built around the base ingredient.
-    Uses Groq if available/toggled; otherwise rule-based fallback.
+    Uses Groq if available/toggled; otherwise curated rule-based fallback.
     Keeps kosher by avoiding obvious dairy-meat mixes and non-kosher items.
     """
+    protein, cut = classify_item(base_item)
+
     # Prefer AI if available
     if 'client' in globals() and client and st.session_state.get("use_groq"):
         try:
@@ -351,10 +379,12 @@ def generate_meal_title(base_item: str, plan_style: str, cuisines: list[str], me
             prompt = (
                 "Create ONE short, appetizing kosher meal title (6–10 words) using the base item.\n"
                 f"- Base item: {base_item}\n"
-                f"- Style: {plan_style}\n"
+                f"- Protein: {protein}\n"
+                f"- Cut/Style: {cut}\n"
+                f"- Theme: {plan_style}\n"
                 f"- Cuisine hints: {cuisines_txt}\n"
                 f"- Meal focus: {meal_focus_txt}\n"
-                "- Kosher constraints: no pork/shellfish, no mixing meat+dairy; prefer pareve sides.\n"
+                "- Kosher: no pork/shellfish; no mixing meat+dairy; prefer pareve sauces (e.g., tahini).\n"
                 "- Output only the title. No extra text."
             )
             resp = client.chat.completions.create(
@@ -370,39 +400,48 @@ def generate_meal_title(base_item: str, plan_style: str, cuisines: list[str], me
         except Exception:
             pass  # fall through to rule-based
 
-    # Rule-based fallback: technique + accent + side
-    techniques = [
-        "Roasted", "Grilled", "Pan-Seared", "Herb-Crusted", "Garlic-Lemon", "Spice-Rubbed",
-        "Sheet-Pan", "Za’atar", "Sumac-Dusted", "Honey-Chili", "Paprika-Rubbed", "Citrus-Herb",
-    ]
-    sides = [
-        "with Herbed Couscous", "over Roasted Veggies", "with Tahini Drizzle", "with Olive & Tomato Salad",
-        "with Garlic Green Beans", "over Turmeric Rice", "with Lemon Dill Slaw", "with Sumac Onions",
-        "with Chimichurri", "with Charred Broccolini", "with Cauliflower Pilaf",
-    ]
-    cuisine_tags = {
-        "Israeli": ["Za’atar", "Sumac-Dusted", "Tahini"],
-        "Mediterranean": ["Herb-Crusted", "Citrus-Herb", "Olive"],
-        "Persian": ["Saffron", "Herb", "Turmeric"],
-        "Mexican": ["Chili-Lime", "Smoky", "Chipotle"],
-        "Italian": ["Garlic-Herb", "Tomato-Basil", "Balsamic"],
-        "French": ["Herbes de Provence", "Dijon", "Butter-Herb"],  # tag only; not literal butter
-        "Lebanese": ["Sumac", "Seven-Spice", "Tahini"],
-        "Indian": ["Tandoori-Style", "Masala", "Cardamom"],
-        "Thai": ["Lemongrass", "Chili-Lime", "Herb"],
-        "American": ["BBQ", "Smoke-Rubbed", "Butcher-Style"],
-        "Spanish": ["Smoked Paprika", "Romesco-Style", "Garlic-Herb"],
+    # Curated fallback patterns for tastier names
+    rand = random.Random(RANDOM_SEED + hash(base_item) % 100000)
+
+    patterns_by_protein = {
+        "Lamb": [
+            "Moroccan Lamb Stew Salad Bowls",
+            "Lamb and Chickpea Tagine",
+            "Za’atar Grilled Lamb with Herb Couscous",
+            "Sumac-Rubbed Lamb over Roasted Vegetables",
+        ],
+        "Beef": [
+            f"{cut} Skewers with Herbed Tahini Sauce" if "London Broil" in cut else "London Broil Skewers with Herbed Tahini Sauce",
+            "Pepper Steak Lettuce Wraps",
+            f"Korean Bulgogi {cut}" if cut not in ("Pepper Steak",) else "Korean Bulgogi London Broil",
+            "One-Pan Pepper Steak with Roasted Vegetables",
+            "Garlic-Herb Beef with Cauliflower Pilaf",
+        ],
+        "Chicken": [
+            "Za’atar Roast Chicken with Herbed Couscous",
+            "Garlic-Lemon Chicken over Roasted Veggies",
+            "Sheet-Pan Chicken with Sumac Onions",
+            "Honey-Chili Chicken with Turmeric Rice",
+        ],
+        "Turkey": [
+            "Citrus-Herb Turkey over Quinoa Tabbouleh",
+            "Smoky Turkey Skewers with Tahini Drizzle",
+        ],
+        "Salmon": [
+            "Herb-Crusted Salmon with Lemon Dill Slaw",
+            "Sumac-Dusted Salmon over Charred Broccolini",
+        ],
+        "Fish": [
+            "Chili-Lime Fish with Tomato-Cucumber Salad",
+            "Mediterranean Spiced Fish over Olive Couscous",
+        ],
     }
-    tech_pool = techniques.copy()
-    if cuisines:
-        for c in cuisines:
-            for tag in cuisine_tags.get(c, []):
-                tech_pool.append(tag)
-    random.seed(RANDOM_SEED)
-    t = random.choice(tech_pool)
-    s = random.choice(sides)
-    base_item_clean = re.sub(r"(?i)\b(parmesan|butter|cream|cheese)\b", "Herb", base_item)
-    return f"{t} {base_item_clean} {s}"
+
+    pool = patterns_by_protein.get(protein, [
+        f"Herb-Crusted {cut} with Olive & Tomato Salad",
+        f"Spice-Rubbed {cut} with Garlic Green Beans",
+    ])
+    return rand.choice(pool)
 
 def demo_recipes(selected_title: str, n: int = 3) -> str:
     out = []
@@ -543,17 +582,17 @@ with tab1:
             if st.button("🔄 New Variations"):
                 st.experimental_rerun()
 
-# ── Tab 2: Meal Plans (now shows meal titles) ────────────────────────────────
+# ── Tab 2: Meal Plans (MEAL TITLES; default 3 days) ──────────────────────────
 with tab2:
     st.header("🗓️ Intelligent Meal Planning")
 
     c1, c2 = st.columns([2, 1])
     with c1:
-        num_days_plan = st.slider("📅 Plan Duration (Days)", 1, 14, 7)
+        num_days_plan = st.slider("📅 Plan Duration (Days)", 1, 14, 3)  # default = 3
         meal_types_for_plan = st.multiselect(
             "🍽️ Meals to Include",
             ["Breakfast", "Lunch", "Dinner", "Snacks"],
-            default=["Lunch", "Dinner"],
+            default=["Lunch", "Dinner"],  # typically two per day, matching your examples
         )
         plan_style = st.selectbox(
             "🎯 Meal Plan Theme",
@@ -590,7 +629,7 @@ with tab2:
                 planned_items_for_shopping = []
 
                 for day in range(1, num_days_plan + 1):
-                    row = {"Day": f"Day {day}"}
+                    row = {"Day": f"{day}"}  # numeric day index like your example
                     for mt in meal_types_for_plan:
                         # choose base item
                         if allow_repeats:
@@ -600,15 +639,17 @@ with tab2:
                             base_item = pick
                             pool.remove(pick)
 
-                        # build meal title (AI or rule-based)
+                        # build meal title (AI or curated rule-based)
                         meal_title = generate_meal_title(base_item, plan_style, cuisine_types, mt)
 
                         # show pretty name in the grid; remember base item for shopping
+                        # column header = meal type (e.g., Lunch, Dinner)
                         row[mt] = meal_title
                         planned_items_for_shopping.append(base_item)
                     plan_rows.append(row)
 
-                plan_df = pd.DataFrame(plan_rows)
+                # Reorder columns as Day, then selected meal types
+                plan_df = pd.DataFrame(plan_rows, columns=["Day"] + meal_types_for_plan)
                 st.dataframe(plan_df, use_container_width=True, hide_index=True)
 
                 # Store plan (display) and shopping items (session only)
@@ -617,7 +658,7 @@ with tab2:
                 st.success("🎉 Meal plan generated! Check the Shopping tab for your grocery list.")
 
                 # Export plan
-                plan_csv = pd.DataFrame(plan_rows).to_csv(index=False).encode("utf-8")
+                plan_csv = plan_df.to_csv(index=False).encode("utf-8")
                 st.download_button("⬇️ Download Plan (CSV)", data=plan_csv, file_name="meal_plan.csv", mime="text/csv")
 
 # ── Tab 3: Analytics ─────────────────────────────────────────────────────────
