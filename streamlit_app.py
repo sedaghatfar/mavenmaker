@@ -1,10 +1,17 @@
+# streamlit_app.py — Streamlit Cloud (no persistence)
+# ──────────────────────────────────────────────────────────────────────────────
+# - No filesystem persistence (everything is in st.session_state only)
+# - CSV from repo (meatmaven_specials.csv) or user upload
+# - Groq via st.secrets["GROQ_API_KEY"] (falls back to env if needed)
+# - Kosher/high-protein guardrails, analytics, exports
+# ──────────────────────────────────────────────────────────────────────────────
+
 import os
 import re
 import json
 import uuid
 import random
 from datetime import datetime
-from pathlib import Path
 
 import pandas as pd
 import streamlit as st
@@ -18,37 +25,7 @@ except Exception:
 
 # ── Config for Streamlit Cloud (GitHub) ───────────────────────────────────────
 DATA_FILE = "meatmaven_specials.csv"  # lives in your repo root
-
-# Load CSV with simple validation
-try:
-    df = pd.read_csv(DATA_FILE)
-except FileNotFoundError:
-    st.error(f"❌ Could not find `{DATA_FILE}` in the repo. Make sure it’s committed to GitHub.")
-    st.stop()
-except Exception as e:
-    st.error(f"❌ Error reading `{DATA_FILE}`: {e}")
-    st.stop()
-
-required_cols = {"title", "price"}
-if not required_cols.issubset(df.columns):
-    st.error(f"❌ `{DATA_FILE}` must include columns: {sorted(required_cols)}. Found: {list(df.columns)}")
-    st.stop()
-
-# Normalize types & display column
-df["title"] = df["title"].astype(str)
-df["price"] = pd.to_numeric(df["price"], errors="coerce")
-if df["price"].isna().any():
-    st.warning("⚠️ Some prices were non-numeric and set to NaN.")
-df["display"] = df["title"] + " - $" + df["price"].round(2).astype(str)
-
-# Initialize Groq client from Streamlit Cloud secrets
-try:
-    api_key = st.secrets["GROQ_API_KEY"]
-except KeyError:
-    st.error("❌ Missing `GROQ_API_KEY` in Streamlit Cloud Secrets. Go to Settings → Secrets and add it.")
-    st.stop()
-
-client = Groq(api_key=api_key)
+RANDOM_SEED = 42
 
 # ── Page Config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -94,11 +71,11 @@ st.markdown(
 
 # ── Utils ─────────────────────────────────────────────────────────────────────
 def koshernize_name(name: str) -> str:
-    # Soft guardrails: keep branding kosher-friendly by hinting away from pork
-    return "Turkey Tenderloin" if "pork" in name.lower() else name
+    # Soft guardrails
+    return "Turkey Tenderloin" if "pork" in str(name).lower() else str(name)
 
 def clean_markdown_output(text: str) -> str:
-    text = re.sub(r"\*{3,}", "**", text)
+    text = re.sub(r"\*{3,}", "**", text or "")
     text = re.sub(r"\n\s*\n\s*\n", "\n\n", text).strip()
     return text
 
@@ -111,36 +88,22 @@ def value_score_row(row) -> float:
     except Exception:
         return 0.0
 
-def persist_state(state_dict: dict) -> None:
-    try:
-        STATE_PATH.write_text(json.dumps(state_dict, ensure_ascii=False, indent=2))
-    except Exception:
-        pass  # Non-fatal
-
-def load_persisted_state() -> dict:
-    if STATE_PATH.exists():
-        try:
-            return json.loads(STATE_PATH.read_text())
-        except Exception:
-            return {}
-    return {}
-
 # ── Caching ───────────────────────────────────────────────────────────────────
-@st.cache_data(show_spinner=False)
-def load_csv(file_path: str) -> pd.DataFrame:
-    df = pd.read_csv(file_path)
-    return df
-
 @st.cache_data(show_spinner=False)
 def ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    # Display text
-    if "price" in df.columns:
-        df["price"] = pd.to_numeric(df["price"], errors="coerce")
+    # Normalize
     if "title" not in df.columns:
         df["title"] = [f"Item {i+1}" for i in range(len(df))]
-    if "display" not in df.columns:
-        df["display"] = df["title"].astype(str) + " - $" + df["price"].round(2).astype(str)
+    df["title"] = df["title"].astype(str)
+
+    if "price" in df.columns:
+        df["price"] = pd.to_numeric(df["price"], errors="coerce")
+    else:
+        df["price"] = float("nan")
+
+    if df["price"].isna().any():
+        st.warning("⚠️ Some prices were non-numeric or missing and set to NaN.")
 
     # Synthetic nutrition if missing
     if "protein" not in df.columns:
@@ -150,19 +113,61 @@ def ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
         random.seed(RANDOM_SEED + 1)
         df["calories"] = [random.randint(250, 450) for _ in range(len(df))]
 
-    # Value score
-    df["value_score"] = df.apply(value_score_row, axis=1).round(2)
-    # Kosher guardrail tweak
+    # Derived
     df["title"] = df["title"].apply(koshernize_name)
     df["display"] = df["title"] + " - $" + df["price"].round(2).astype(str)
+    df["value_score"] = df.apply(value_score_row, axis=1).round(2)
     return df
 
-@st.cache_data(show_spinner=False)
-def load_or_sample(file_path: str) -> pd.DataFrame:
+@st.cache_resource(show_spinner=False)
+def init_groq_client():
+    # Prefer Streamlit secrets, fallback to env var
+    api_key = None
+    if st.secrets is not None and "GROQ_API_KEY" in st.secrets:
+        api_key = st.secrets["GROQ_API_KEY"]
+    if not api_key:
+        api_key = os.getenv("GROQ_API_KEY")
+    if not Groq or not api_key:
+        return None
+    return Groq(api_key=api_key)
+
+# ── Session State Bootstrap (no disk persistence) ─────────────────────────────
+if "meal_history" not in st.session_state:
+    st.session_state.meal_history = []
+if "favorites" not in st.session_state:
+    st.session_state.favorites = []
+if "current_plan" not in st.session_state:
+    st.session_state.current_plan = None
+
+# ── Header ────────────────────────────────────────────────────────────────────
+st.markdown(
+    '<div class="main-header"><h1>🥩 MeatMaven Recipe Intelligence</h1>'
+    '<p>Your AI-powered culinary companion for exceptional meal planning</p></div>',
+    unsafe_allow_html=True,
+)
+
+# ── Data Ingestion (GitHub file or upload) ────────────────────────────────────
+data_col1, data_col2 = st.columns([0.65, 0.35], vertical_alignment="center")
+with data_col1:
+    up_file = st.file_uploader(
+        "📥 Upload a specials CSV (optional)",
+        type=["csv"],
+        help="Columns: title, price, [protein], [calories]",
+    )
+with data_col2:
+    st.caption("If you don't upload, the app will load `meatmaven_specials.csv` from the repo.")
+
+if up_file is not None:
     try:
-        df = ensure_columns(load_csv(file_path))
-        return df
-    except Exception:
+        df = ensure_columns(pd.read_csv(up_file))
+    except Exception as e:
+        st.error(f"❌ Error reading uploaded CSV: {e}")
+        st.stop()
+else:
+    try:
+        df = ensure_columns(pd.read_csv(DATA_FILE))
+    except FileNotFoundError:
+        # Provide a friendly sample if the repo file is missing
         sample = {
             "title": [
                 "Premium Ribeye Steak", "Fresh Salmon Fillet", "Organic Chicken Breast",
@@ -173,50 +178,10 @@ def load_or_sample(file_path: str) -> pd.DataFrame:
             "calories": [291, 206, 165, 250, 294, 189],
         }
         df = ensure_columns(pd.DataFrame(sample))
-        st.info("📁 Using sample data. Place 'meatmaven_specials.csv' in server root to use live data.")
-        return df
-
-@st.cache_resource(show_spinner=False)
-def init_groq_client():
-    api_key = os.getenv("GROQ_API_KEY")
-    if not Groq or not api_key:
-        return None
-    return Groq(api_key=api_key)
-
-# ── Session State Bootstrap ───────────────────────────────────────────────────
-if "meal_history" not in st.session_state:
-    st.session_state.meal_history = []
-if "favorites" not in st.session_state:
-    st.session_state.favorites = []
-if "current_plan" not in st.session_state:
-    st.session_state.current_plan = None
-if "persist_ok" not in st.session_state:
-    # Try to pull previously persisted user state
-    restored = load_persisted_state()
-    if restored:
-        st.session_state.meal_history = restored.get("meal_history", [])
-        st.session_state.favorites = restored.get("favorites", [])
-        st.session_state.current_plan = restored.get("current_plan", None)
-    st.session_state.persist_ok = True
-
-# ── Data Ingestion ────────────────────────────────────────────────────────────
-st.markdown(
-    '<div class="main-header"><h1>🥩 MeatMaven Recipe Intelligence</h1>'
-    '<p>Your AI-powered culinary companion for exceptional meal planning</p></div>',
-    unsafe_allow_html=True,
-)
-
-# Top metrics quick glance
-data_col1, data_col2 = st.columns([0.6, 0.4], vertical_alignment="center")
-with data_col1:
-    up_file = st.file_uploader("📥 Upload a specials CSV (optional)", type=["csv"], help="Columns: title, price, [protein], [calories]")
-with data_col2:
-    alt_path = st.text_input("Or read from server path", value=DEFAULT_DATA_PATH, help="e.g., /root/meatmaven_specials.csv on DO droplet")
-
-if up_file is not None:
-    df = ensure_columns(pd.read_csv(up_file))
-else:
-    df = load_or_sample(alt_path)
+        st.info("📁 Using sample data. Commit `meatmaven_specials.csv` to your repo to use live data.")
+    except Exception as e:
+        st.error(f"❌ Error reading `{DATA_FILE}`: {e}")
+        st.stop()
 
 # ── Sidebar Controls ──────────────────────────────────────────────────────────
 with st.sidebar:
@@ -230,20 +195,31 @@ with st.sidebar:
     st.markdown("### 🌐 Model Settings")
     client = init_groq_client()
     has_api = client is not None
-    st.toggle("Use Groq (if key set)", value=has_api, key="use_groq", help="If off or no key, app uses fast demo mode.")
+    st.toggle(
+        "Use Groq (if key set)",
+        value=has_api,
+        key="use_groq",
+        help="If off or no key, app uses fast demo mode.",
+    )
     model_choice = st.selectbox(
         "Groq Model",
         options=[
             "llama-3.1-8b-instant",
             "llama-3.1-70b-versatile",
-            "llama-guard-3-8b",  # visible for completeness; not used directly
+            "llama-guard-3-8b",
         ],
         index=0,
         disabled=not (has_api and st.session_state.use_groq),
         help="8B is snappy; 70B gives richer detail.",
     )
-    temperature = st.slider("Creativity (temperature)", 0.0, 1.0, 0.7, 0.05, disabled=not (has_api and st.session_state.use_groq))
-    max_tokens = st.slider("Max tokens", 256, 4096, 1600, 64, disabled=not (has_api and st.session_state.use_groq))
+    temperature = st.slider(
+        "Creativity (temperature)", 0.0, 1.0, 0.7, 0.05,
+        disabled=not (has_api and st.session_state.use_groq),
+    )
+    max_tokens = st.slider(
+        "Max tokens", 256, 4096, 1600, 64,
+        disabled=not (has_api and st.session_state.use_groq),
+    )
     st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
@@ -281,21 +257,24 @@ fil1, fil2, fil3, fil4 = st.columns(4)
 with fil1:
     q = st.text_input("Search title", placeholder="e.g., salmon, ribeye")
 with fil2:
-    price_range = st.slider("Price range ($)", float(df["price"].min()), float(df["price"].max()), (float(df["price"].min()), float(df["price"].max())))
+    price_min = float(df["price"].min()) if df["price"].notna().any() else 0.0
+    price_max = float(df["price"].max()) if df["price"].notna().any() else 100.0
+    price_range = st.slider("Price range ($)", price_min, price_max, (price_min, price_max))
 with fil3:
     protein_min = st.number_input("Min protein (g)", value=float(df["protein"].min()), step=1.0)
 with fil4:
     sort_by = st.selectbox("Sort by", ["title", "price", "protein", "calories", "value_score"], index=4)
 
-mask = (
-    df["title"].str.contains(q, case=False, na=False) if q else True
-) & (df["price"].between(price_range[0], price_range[1])) & (df["protein"] >= protein_min)
+mask_title = df["title"].str.contains(q, case=False, na=False) if q else True
+mask_price = df["price"].between(price_range[0], price_range[1], inclusive="both") if df["price"].notna().any() else True
+mask_protein = df["protein"] >= protein_min
+mask = mask_title & mask_price & mask_protein
+
 catalog_df = df[mask].sort_values(sort_by, ascending=True if sort_by in ["title", "calories"] else False)
 st.dataframe(
     catalog_df[["title", "price", "protein", "calories", "value_score"]]
     .rename(columns={"value_score": "protein_per_$"}),
-    use_container_width=True,
-    hide_index=True
+    use_container_width=True, hide_index=True
 )
 
 # ── Helper: Prompt Builder ────────────────────────────────────────────────────
@@ -392,13 +371,6 @@ def add_favorite(name: str, content: str):
     }
     st.session_state.favorites.insert(0, fav)
 
-def persist_now():
-    persist_state({
-        "meal_history": st.session_state.meal_history,
-        "favorites": st.session_state.favorites,
-        "current_plan": st.session_state.current_plan,
-    })
-
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 tab1, tab2, tab3, tab4, tab5 = st.tabs(
     ["💡 Recipe Ideas", "🗓️ Meal Plans", "📊 Analytics", "⭐ Favorites", "🛒 Shopping"]
@@ -467,7 +439,7 @@ with tab1:
         st.subheader(f"✨ Gourmet Recipes for {selected_title}")
         st.markdown(f'<div class="recipe-card">{recipe_md}</div>', unsafe_allow_html=True)
 
-        # History & actions
+        # History (session-only)
         history_item = {
             "id": str(uuid.uuid4()),
             "item": selected_title,
@@ -476,13 +448,11 @@ with tab1:
             "timestamp": human_time(),
         }
         st.session_state.meal_history.insert(0, history_item)
-        persist_now()
 
         a1, a2, a3, a4 = st.columns(4)
         with a1:
             if st.button("⭐ Save to Favorites"):
                 add_favorite(selected_title, recipe_md)
-                persist_now()
                 st.toast("Added to favorites!", icon="⭐")
         with a2:
             st.download_button(
@@ -559,8 +529,8 @@ with tab2:
                 plan_df = pd.DataFrame(plan_rows)
                 st.dataframe(plan_df, use_container_width=True, hide_index=True)
 
+                # Session-only
                 st.session_state.current_plan = plan_df.to_dict(orient="list")
-                persist_now()
                 st.success("🎉 Meal plan generated! Check the Shopping tab for your grocery list.")
 
                 # Export plan
@@ -621,7 +591,6 @@ with tab4:
                 with cols[0]:
                     if st.button("🗑️ Remove", key=f"rm_{fav['id']}"):
                         st.session_state.favorites = [f for f in st.session_state.favorites if f["id"] != fav["id"]]
-                        persist_now()
                         st.experimental_rerun()
                 with cols[1]:
                     st.download_button(
@@ -633,7 +602,6 @@ with tab4:
                     )
                 with cols[2]:
                     st.code(f"Saved: {fav['date_saved']}", language="text")
-
     else:
         st.info("🔖 No favorites yet. Generate some recipes and save your winners!")
 
@@ -731,11 +699,4 @@ st.markdown(
 st.markdown(
     """
 <div style="text-align:center; margin-top: 10px;">
-  <a href="https://groq.com" target="_blank" rel="noopener noreferrer">
-    <img src="https://console.groq.com/powered-by-groq.svg" alt="Powered by Groq" style="width: 120px; height: auto;" />
-  </a>
-</div>
-""",
-    unsafe_allow_html=True,
-)
-
+  <a href="http
