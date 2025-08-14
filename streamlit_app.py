@@ -699,4 +699,10 @@ st.markdown(
 st.markdown(
     """
 <div style="text-align:center; margin-top: 10px;">
-  <a href="http
+  <a href="https://groq.com" target="_blank" rel="noopener noreferrer">
+    <img src="https://console.groq.com/powered-by-groq.svg" alt="Powered by Groq" style="width: 120px; height: auto;" />
+  </a>
+</div>
+""",
+    unsafe_allow_html=True,
+)
